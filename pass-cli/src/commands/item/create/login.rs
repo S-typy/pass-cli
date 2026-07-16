@@ -38,6 +38,8 @@ pub struct LoginTemplate {
     pub totp_uri: Option<String>,
     #[serde(default)]
     pub urls: Vec<String>,
+    #[serde(default)]
+    pub passkeys: Vec<pass_domain::Passkey>,
 }
 
 impl From<LoginTemplate> for LoginItemCreatePayload {
@@ -49,6 +51,7 @@ impl From<LoginTemplate> for LoginItemCreatePayload {
             password: value.password,
             totp_uri: value.totp_uri,
             urls: value.urls,
+            passkeys: value.passkeys,
         }
     }
 }
@@ -194,6 +197,7 @@ pub async fn run(mut args: LoginArgs, client: PassClient) -> Result<()> {
         password,
         totp_uri: None,
         urls: args.url,
+        passkeys: vec![],
     };
 
     #[cfg(feature = "internal")]

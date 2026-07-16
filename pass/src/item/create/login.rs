@@ -20,7 +20,7 @@
 use super::ItemCreatedEvent;
 use crate::{PassClient, PassClientContext};
 use anyhow::{Context, Result};
-use pass_domain::{FolderId, ItemContent, ItemId, ItemType, LoginItem, ShareId};
+use pass_domain::{FolderId, ItemContent, ItemId, ItemType, LoginItem, Passkey, ShareId};
 
 #[derive(Clone, Debug)]
 pub struct LoginItemCreatePayload {
@@ -30,6 +30,7 @@ pub struct LoginItemCreatePayload {
     pub password: Option<String>,
     pub urls: Vec<String>,
     pub totp_uri: Option<String>,
+    pub passkeys: Vec<Passkey>,
 }
 
 impl<C: PassClientContext> PassClient<C> {
@@ -50,7 +51,7 @@ impl<C: PassClientContext> PassClient<C> {
                     password: payload.password.unwrap_or_default(),
                     urls: payload.urls,
                     totp_uri: payload.totp_uri.unwrap_or_default(),
-                    passkeys: vec![],
+                    passkeys: payload.passkeys,
                 }),
                 folder_id,
             )
@@ -127,6 +128,7 @@ mod tests {
                     password: Some(ITEM_PASSWORD.to_string()),
                     urls: vec![ITEM_WEBSITE.to_string()],
                     totp_uri: None,
+                    passkeys: vec![],
                 },
                 None,
             )
