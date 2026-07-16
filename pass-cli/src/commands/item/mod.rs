@@ -205,6 +205,11 @@ pub enum ItemCommands {
             help = "Field to update in format field_name=field_value (can be specified multiple times)"
         )]
         fields: Vec<String>,
+        #[arg(
+            long = "add-passkey",
+            help = "Path to a JSON file describing a passkey to append to a login item"
+        )]
+        add_passkey: Option<String>,
     },
 }
 
@@ -421,6 +426,7 @@ pub async fn run(subcommand: ItemCommands, client: PassClient) -> Result<()> {
             item_id,
             item_title,
             fields,
+            add_passkey,
         } => {
             // Apply default vault if both are None
             let share_query = match (&share_id, &vault_name) {
@@ -438,7 +444,7 @@ pub async fn run(subcommand: ItemCommands, client: PassClient) -> Result<()> {
                 _ => common::ShareQuery::new(share_id, vault_name)?,
             };
             let item_query = common::ItemQuery::new(item_id, item_title)?;
-            update::run(client, share_query, item_query, fields).await
+            update::run(client, share_query, item_query, fields, add_passkey).await
         }
     }
 }

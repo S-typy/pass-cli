@@ -45,14 +45,27 @@ pub async fn run(
     share_query: ShareQuery,
     item_query: ItemQuery,
     fields: Vec<String>,
+    add_passkey: Option<String>,
 ) -> Result<()> {
     let parsed_fields = parse_fields(fields)?;
 
-    if parsed_fields.is_empty() {
+    if parsed_fields.is_empty() && add_passkey.is_none() {
         return Err(anyhow!(
-            "No fields to update. Use --field to specify at least one field to update"
+            "Nothing to update. Use --field to specify at least one field, or --add-passkey to append a passkey to a login item"
         ));
     }
+
+    // Load the passkey to append, if any, before touching the network.
+    let passkey_to_add: Option<pass_domain::Passkey> = match add_passkey {
+        Some(path) => {
+            let contents = std::fs::read_to_string(&path)
+                .with_context(|| format!("Error reading passkey file: {path}"))?;
+            let passkey = serde_json::from_str::<pass_domain::Passkey>(&contents)
+                .with_context(|| format!("Error parsing passkey JSON from file: {path}"))?;
+            Some(passkey)
+        }
+        None => None,
+    };
 
     let share_id = share_query.share_id(&client).await?;
     let item_id = item_query.item_id(&share_id, &client).await?;
@@ -85,6 +98,21 @@ pub async fn run(
         }
     }
 
+    // Append a passkey, if requested. Only valid for login items.
+    let mut passkeys_added = 0;
+    if let Some(passkey) = passkey_to_add {
+        match &mut updated_content.content {
+            pass_domain::ItemContent::Login(login) => {
+                login.passkeys.push(passkey);
+                passkeys_added += 1;
+                println!("Added passkey to login item");
+            }
+            _ => {
+                return Err(anyhow!("--add-passkey is only valid for login items"));
+            }
+        }
+    }
+
     client
         .update_item(&share_id, &item_id, updated_content)
         .await
@@ -92,8 +120,8 @@ pub async fn run(
     send_reason_if_agent(&client, EventAction::ItemUpdate, &share_id, Some(&item_id)).await?;
 
     eprintln!(
-        "Item updated successfully: {} field(s) updated, {} custom field(s) created",
-        fields_updated, fields_created
+        "Item updated successfully: {} field(s) updated, {} custom field(s) created, {} passkey(s) added",
+        fields_updated, fields_created, passkeys_added
     );
 
     Ok(())
