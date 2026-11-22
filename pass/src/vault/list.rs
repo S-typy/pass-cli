@@ -36,6 +36,15 @@ impl<C: PassClientContext> PassClient<C> {
             }
         }
 
+        self.fetch_vaults(false).await
+    }
+
+    pub async fn list_vaults_for_sync(&self) -> Result<Vec<Vault>> {
+        self.clear_shares_cache().await;
+        self.fetch_vaults(true).await
+    }
+
+    async fn fetch_vaults(&self, require_complete: bool) -> Result<Vec<Vault>> {
         let shares = self.list_shares().await.context("Error listing shares")?;
 
         // Filter and collect vault shares with their original indices to preserve order
@@ -56,6 +65,7 @@ impl<C: PassClientContext> PassClient<C> {
         }
 
         // Execute futures concurrently with built-in parallelism limiting
+        let expected = vault_shares.len();
         let results: Vec<(usize, Vault)> = stream::iter(vault_shares)
             .map(|(original_index, vault_id, share_id, share_content)| {
                 let client = self.clone();
@@ -83,6 +93,11 @@ impl<C: PassClientContext> PassClient<C> {
             .filter_map(|result| async { result })
             .collect()
             .await;
+
+        anyhow::ensure!(
+            !require_complete || results.len() == expected,
+            "Incomplete vault list during sync"
+        );
 
         // Sort results by original index to preserve order
         let mut results = results;

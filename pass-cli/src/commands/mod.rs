@@ -46,7 +46,7 @@ pub mod update;
 pub mod user;
 pub mod vault;
 
-#[derive(ValueEnum, Clone, Debug)]
+#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 pub enum OutputFormat {
     Human,
     Json,

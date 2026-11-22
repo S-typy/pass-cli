@@ -22,6 +22,7 @@ use crate::commands::item::agent_monitor::send_reason_if_agent;
 use crate::helpers::CliPassClient as PassClient;
 use anyhow::{Context, Result, anyhow};
 use pass_domain::{EventAction, UpdateFieldResult};
+use std::io::{self, Read};
 
 fn parse_fields(fields: Vec<String>) -> Result<Vec<(String, String)>> {
     fields
@@ -57,6 +58,16 @@ pub async fn run(
 
     // Load the passkey to append, if any, before touching the network.
     let passkey_to_add: Option<pass_domain::Passkey> = match add_passkey {
+        Some(path) if path == "-" => {
+            let mut stdin = io::stdin();
+            let mut contents = String::new();
+            stdin
+                .read_to_string(&mut contents)
+                .context("Error reading passkey JSON from stdin")?;
+            let passkey = serde_json::from_str::<pass_domain::Passkey>(&contents)
+                .context("Error parsing passkey JSON from stdin")?;
+            Some(passkey)
+        }
         Some(path) => {
             let contents = std::fs::read_to_string(&path)
                 .with_context(|| format!("Error reading passkey file: {path}"))?;

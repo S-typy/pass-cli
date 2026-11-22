@@ -31,7 +31,12 @@ use std::io::{self, Read};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Default)]
 pub struct LoginTemplate {
+    /// Stable source UUID for idempotent creation within this vault.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_uuid: Option<String>,
     pub title: String,
+    #[serde(default)]
+    pub note: Option<String>,
     pub username: Option<String>,
     pub email: Option<String>,
     pub password: Option<String>,
@@ -46,6 +51,7 @@ impl From<LoginTemplate> for LoginItemCreatePayload {
     fn from(value: LoginTemplate) -> Self {
         Self {
             title: value.title,
+            note: value.note,
             email: value.email,
             username: value.username,
             password: value.password,
@@ -63,7 +69,10 @@ pub struct LoginArgs {
     get_template: bool,
 
     /// Create login from template file or stdin
-    #[arg(long, help = "Path to template file, or '-' for stdin")]
+    #[arg(
+        long,
+        help = "JSON template file or '-' for stdin; supply item_uuid for idempotent creation"
+    )]
     from_template: Option<String>,
 
     /// Share ID of the vault to create the login item in
@@ -191,7 +200,9 @@ pub async fn run(mut args: LoginArgs, client: PassClient) -> Result<()> {
     };
 
     let template = LoginTemplate {
+        item_uuid: None,
         title,
+        note: None,
         username: args.username,
         email: args.email,
         password,
@@ -219,11 +230,24 @@ async fn create_login_from_template(
 ) -> Result<()> {
     ensure_reason_if_agent(&client)?;
     let share_id = share_query.share_id(&client).await?;
-    let res = client
-        .create_login(&share_id, template.into(), folder_id.as_ref())
-        .await
-        .context("Error creating login item")?;
-    send_reason_if_agent(&client, EventAction::ItemCreate, &share_id, Some(&res)).await?;
+    let res = if template.item_uuid.is_some() {
+        let items = super::login_batch::templates_to_item_data(vec![template])?;
+        let mut ids = super::unique_login::create(
+            &client,
+            &share_id,
+            items,
+            super::unique_login::WriteMode::Single(folder_id.as_ref()),
+        )
+        .await?;
+        ids.pop().context("Missing login item ID")?
+    } else {
+        let res = client
+            .create_login(&share_id, template.into(), folder_id.as_ref())
+            .await
+            .context("Error creating login item")?;
+        send_reason_if_agent(&client, EventAction::ItemCreate, &share_id, Some(&res)).await?;
+        res
+    };
     println!("{res}");
 
     Ok(())

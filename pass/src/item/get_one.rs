@@ -82,6 +82,24 @@ struct ChunkResponse {
 }
 
 impl<C: PassClientContext> PassClient<C> {
+    /// Read one current revision for sync. Only a missing revision is a deletion.
+    pub async fn get_item_for_sync(
+        &self,
+        share_id: &ShareId,
+        item_id: &ItemId,
+    ) -> Result<Option<Item>> {
+        let Some(revision) = self.fetch_item_revision_optional(share_id, item_id).await? else {
+            return Ok(None);
+        };
+        let opened = self.open_items(share_id, vec![revision]).await?;
+        let item = opened
+            .into_iter()
+            .next()
+            .context("Could not open changed item")?
+            .item;
+        Ok(Some(item))
+    }
+
     pub async fn view_item(&self, share_id: &ShareId, item_id: &ItemId) -> Result<ItemDetails> {
         let item_revision = self
             .fetch_item_revision(share_id, item_id)
@@ -248,6 +266,16 @@ impl<C: PassClientContext> PassClient<C> {
         share_id: &ShareId,
         item_id: &ItemId,
     ) -> Result<ItemRevision> {
+        self.fetch_item_revision_optional(share_id, item_id)
+            .await?
+            .context("Invalid status code: 404 Not Found")
+    }
+
+    async fn fetch_item_revision_optional(
+        &self,
+        share_id: &ShareId,
+        item_id: &ItemId,
+    ) -> Result<Option<ItemRevision>> {
         let res = self
             .send(GET!(
                 "/pass/v1/share/{share_id}/item/{item_id}",
@@ -256,13 +284,16 @@ impl<C: PassClientContext> PassClient<C> {
             ))
             .await
             .context("Error fetching item")?;
+        if res.status().as_u16() == 404 {
+            return Ok(None);
+        }
         if !res.status().is_success() {
             debug_response(&res);
             return Err(anyhow!("Invalid status code: {}", res.status()));
         }
         let response: GetItemResponse = res.body_json().context("Error parsing item response")?;
 
-        Ok(response.item)
+        Ok(Some(response.item))
     }
 }
 
@@ -303,6 +334,33 @@ mod tests {
 
         assert_eq!(ITEM_ID, revision.item_id);
         assert_eq!(content, revision.content);
+    }
+
+    #[muon_test::test]
+    async fn sync_distinguishes_absence_from_a_denied_read(server: muon_test::Server) {
+        let (raw_client, api) = server.client::<()>();
+        let client = make_test_pass_client_with_setup(raw_client, &api, PlanType::Free).await;
+        for (item_id, status) in [("missing", 404), ("denied", 403)] {
+            let handled = api.handler_with_method(
+                Method::GET,
+                format!("/pass/v1/share/s/item/{item_id}"),
+                move |_| {
+                    muon_test::server::Response::builder()
+                        .status(status)
+                        .body(axum::body::Body::empty())
+                        .ok()
+                },
+            );
+            let result = client
+                .get_item_for_sync(&share_id!("s"), &ItemId::new(item_id.into()))
+                .await;
+            if status == 404 {
+                assert!(result.unwrap().is_none());
+            } else {
+                assert!(result.is_err());
+            }
+            assert_hit!(handled);
+        }
     }
 
     #[muon_test::test]

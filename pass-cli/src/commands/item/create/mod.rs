@@ -21,6 +21,8 @@ mod credit_card;
 mod custom;
 mod identity;
 mod login;
+mod login_batch;
+mod unique_login;
 mod note;
 mod ssh_key;
 mod wifi;
@@ -35,6 +37,12 @@ pub enum CreateCommands {
     Login {
         #[command(flatten)]
         args: login::LoginArgs,
+    },
+    /// Create multiple login items in batches of up to 100 from JSON templates
+    #[command(name = "login-batch")]
+    LoginBatch {
+        #[command(flatten)]
+        args: login_batch::LoginBatchArgs,
     },
     /// Create a new note item
     Note {
@@ -73,6 +81,7 @@ pub enum CreateCommands {
 pub async fn run(command: CreateCommands, client: PassClient) -> Result<()> {
     match command {
         CreateCommands::Login { args } => login::run(args, client).await,
+        CreateCommands::LoginBatch { args } => login_batch::run(args, client).await,
         CreateCommands::Note { args } => note::run(args, client).await,
         CreateCommands::CreditCard { args } => credit_card::run(args, client).await,
         CreateCommands::Wifi { args } => wifi::run(args, client).await,

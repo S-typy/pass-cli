@@ -20,11 +20,12 @@
 use super::ItemCreatedEvent;
 use crate::{PassClient, PassClientContext};
 use anyhow::{Context, Result};
-use pass_domain::{FolderId, ItemContent, ItemId, ItemType, LoginItem, Passkey, ShareId};
+use pass_domain::{FolderId, ItemContent, ItemData, ItemId, ItemType, LoginItem, Passkey, ShareId};
 
 #[derive(Clone, Debug)]
 pub struct LoginItemCreatePayload {
     pub title: String,
+    pub note: Option<String>,
     pub email: Option<String>,
     pub username: Option<String>,
     pub password: Option<String>,
@@ -40,24 +41,38 @@ impl<C: PassClientContext> PassClient<C> {
         payload: LoginItemCreatePayload,
         folder_id: Option<&FolderId>,
     ) -> Result<ItemId> {
+        let data = ItemData {
+            title: payload.title,
+            note: payload.note.unwrap_or_default(),
+            item_uuid: ItemData::generate_uuid(),
+            extra_fields: Vec::new(),
+            platform_specific: None,
+            content: ItemContent::Login(LoginItem {
+                email: payload.email.unwrap_or_default(),
+                username: payload.username.unwrap_or_default(),
+                password: payload.password.unwrap_or_default(),
+                urls: payload.urls,
+                totp_uri: payload.totp_uri.unwrap_or_default(),
+                passkeys: payload.passkeys,
+            }),
+        };
+        self.create_login_data(share_id, data, folder_id).await
+    }
+
+    pub async fn create_login_data(
+        &self,
+        share_id: &ShareId,
+        data: ItemData,
+        folder_id: Option<&FolderId>,
+    ) -> Result<ItemId> {
+        anyhow::ensure!(
+            matches!(data.content, ItemContent::Login(_)),
+            "Expected a login item"
+        );
         let req = self
-            .create_item_request(
-                share_id,
-                &payload.title,
-                "",
-                ItemContent::Login(LoginItem {
-                    email: payload.email.unwrap_or_default(),
-                    username: payload.username.unwrap_or_default(),
-                    password: payload.password.unwrap_or_default(),
-                    urls: payload.urls,
-                    totp_uri: payload.totp_uri.unwrap_or_default(),
-                    passkeys: payload.passkeys,
-                }),
-                folder_id,
-            )
+            .create_item_request_from_data(share_id, data, folder_id)
             .await
             .context("Error creating login item request")?;
-
         let item_id = self.send_create_item_request(share_id, req).await?;
 
         self.emit_telemetry(&ItemCreatedEvent {
@@ -123,6 +138,7 @@ mod tests {
                 &share_id!(SHARE_ID),
                 LoginItemCreatePayload {
                     title: ITEM_TITLE.to_string(),
+                    note: None,
                     email: Some(ITEM_EMAIL.to_string()),
                     username: Some(ITEM_USERNAME.to_string()),
                     password: Some(ITEM_PASSWORD.to_string()),

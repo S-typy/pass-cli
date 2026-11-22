@@ -34,6 +34,7 @@ pub mod list;
 pub mod member;
 pub mod r#move;
 pub mod share;
+pub mod sync;
 pub mod totp;
 pub mod trash;
 pub mod untrash;
@@ -207,9 +208,14 @@ pub enum ItemCommands {
         fields: Vec<String>,
         #[arg(
             long = "add-passkey",
-            help = "Path to a JSON file describing a passkey to append to a login item"
+            help = "Path to a JSON file describing a passkey to append to a login item, or '-' for stdin"
         )]
         add_passkey: Option<String>,
+    },
+    #[command(about = "Incrementally sync items using Proton sync events (with full snapshot fallback)")]
+    Sync {
+        #[command(flatten)]
+        args: sync::SyncArgs,
     },
 }
 
@@ -446,5 +452,6 @@ pub async fn run(subcommand: ItemCommands, client: PassClient) -> Result<()> {
             let item_query = common::ItemQuery::new(item_id, item_title)?;
             update::run(client, share_query, item_query, fields, add_passkey).await
         }
+        ItemCommands::Sync { args } => sync::run(args, client).await,
     }
 }

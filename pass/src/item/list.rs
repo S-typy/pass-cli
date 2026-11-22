@@ -149,6 +149,21 @@ impl<C: PassClientContext> PassClient<C> {
         Ok(items)
     }
 
+    /// A snapshot used for reconciliation must be fresh and complete.
+    pub async fn list_items_for_sync(&self, share_id: &ShareId) -> Result<Vec<Item>> {
+        let revisions = self.fetch_items(share_id).await?;
+        if revisions.is_empty() {
+            return Ok(Vec::new());
+        }
+        let expected = revisions.len();
+        let opened = self.open_items(share_id, revisions).await?;
+        anyhow::ensure!(
+            opened.len() == expected,
+            "Incomplete item snapshot for share {share_id}"
+        );
+        Ok(opened.into_iter().map(|entry| entry.item).collect())
+    }
+
     async fn fetch_items(&self, share_id: &ShareId) -> Result<Vec<ItemRevision>> {
         let mut items = Vec::new();
         let mut pagination = SincePagination::default();

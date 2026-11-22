@@ -70,39 +70,39 @@ struct SyncEventShareItemOutput {
 struct Events {
     #[serde(rename = "LastEventID")]
     pub last_event_id: String,
-    #[serde(rename = "ItemsUpdated")]
+    #[serde(rename = "ItemsUpdated", default)]
     pub items_updated: Vec<SyncEventShareItemOutput>,
-    #[serde(rename = "ItemsDeleted")]
+    #[serde(rename = "ItemsDeleted", default)]
     pub items_deleted: Vec<SyncEventShareItemOutput>,
-    #[serde(rename = "AliasNoteChanged")]
+    #[serde(rename = "AliasNoteChanged", default)]
     pub alias_note_changed: Vec<SyncEventShareItemOutput>,
-    #[serde(rename = "SharesCreated")]
+    #[serde(rename = "SharesCreated", default)]
     pub shares_created: Vec<SyncEventShareOutput>,
-    #[serde(rename = "SharesUpdated")]
+    #[serde(rename = "SharesUpdated", default)]
     pub shares_updated: Vec<SyncEventShareOutput>,
-    #[serde(rename = "SharesDeleted")]
+    #[serde(rename = "SharesDeleted", default)]
     pub shares_deleted: Vec<SyncEventShareOutput>,
-    #[serde(rename = "FoldersUpdated")]
+    #[serde(rename = "FoldersUpdated", default)]
     pub folders_updated: Vec<SyncEventShareFolderOutput>,
-    #[serde(rename = "FoldersDeleted")]
+    #[serde(rename = "FoldersDeleted", default)]
     pub folders_deleted: Vec<SyncEventShareFolderOutput>,
-    #[serde(rename = "InvitesChanged")]
+    #[serde(rename = "InvitesChanged", default)]
     pub invites_changed: Option<SyncEventChangedWithTokenOutput>,
-    #[serde(rename = "GroupInvitesChanged")]
+    #[serde(rename = "GroupInvitesChanged", default)]
     pub group_invites_changed: Option<SyncEventChangedWithTokenOutput>,
-    #[serde(rename = "PendingAliasToCreateChanged")]
+    #[serde(rename = "PendingAliasToCreateChanged", default)]
     pub pending_alias_to_create_changed: Option<SyncEventChangedWithTokenOutput>,
-    #[serde(rename = "BreachUpdate")]
+    #[serde(rename = "BreachUpdate", default)]
     pub breach_update: Option<SyncEventChangedWithTokenOutput>,
-    #[serde(rename = "OrganizationInfoChanged")]
+    #[serde(rename = "OrganizationInfoChanged", default)]
     pub organization_info_changed: Option<SyncEventChangedWithTokenOutput>,
-    #[serde(rename = "SharesWithInvitesToCreate")]
+    #[serde(rename = "SharesWithInvitesToCreate", default)]
     pub shares_with_invites_to_create: Vec<SyncEventShareOutput>,
-    #[serde(rename = "RefreshUser")]
+    #[serde(rename = "RefreshUser", default)]
     pub refresh_user: bool,
-    #[serde(rename = "EventsPending")]
+    #[serde(rename = "EventsPending", default)]
     pub events_pending: bool,
-    #[serde(rename = "FullRefresh")]
+    #[serde(rename = "FullRefresh", default)]
     pub full_refresh: bool,
 }
 
@@ -113,6 +113,19 @@ struct GetEventsResponse {
 }
 
 impl<C: PassClientContext> PassClient<C> {
+    pub async fn get_last_user_event_id(&self) -> Result<EventId> {
+        self.request_last_event_id()
+            .await
+            .context("Error fetching last user event id")
+    }
+
+    pub async fn get_user_events(&self, event_id: &EventId) -> Result<UserEvents> {
+        self.fetch_events(event_id)
+            .await
+            .map(UserEvents::from)
+            .context("Error fetching user events")
+    }
+
     pub async fn listen_for_events(&self, handler: Arc<dyn UserEventsHandler>) -> Result<()> {
         let initial_event = handler
             .get_last_user_event_id()
@@ -313,5 +326,64 @@ impl From<Events> for UserEvents {
             events_pending: value.events_pending,
             full_refresh: value.full_refresh,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_tools::*;
+    use muon_test::server::Response;
+
+    #[muon_test::test]
+    async fn test_get_last_user_event_id_and_events(server: muon_test::Server) {
+        let (raw_client, api) = server.client::<()>();
+        let client = make_test_pass_client_with_setup(raw_client, &api, PlanType::Free).await;
+
+        let last_handled = api.handler_with_method(Method::GET, "/pass/v1/user/sync_event", |_| {
+            Response::builder()
+                .status(200)
+                .body(axum::body::Body::from(
+                    r#"{"Code":1000,"EventID":"cursor-1"}"#,
+                ))
+                .ok()
+        });
+        let delta_handled =
+            api.handler_with_method(Method::GET, "/pass/v1/user/sync_event/cursor-1", |_| {
+                Response::builder()
+                    .status(200)
+                    .body(axum::body::Body::from(
+                        r#"{
+                            "Code":1000,
+                            "Events":{
+                                "LastEventID":"cursor-2",
+                                "ItemsUpdated":[{"ShareID":"s1","ItemID":"i1","EventToken":"t1"}],
+                                "ItemsDeleted":[{"ShareID":"s1","ItemID":"i2","EventToken":"t2"}],
+                                "EventsPending":false,
+                                "FullRefresh":false
+                            }
+                        }"#,
+                    ))
+                    .ok()
+            });
+
+        let cursor = client
+            .get_last_user_event_id()
+            .await
+            .expect("should fetch last event id");
+        assert_hit!(last_handled);
+        assert_eq!(cursor.value(), "cursor-1");
+
+        let events = client
+            .get_user_events(&cursor)
+            .await
+            .expect("should fetch user events");
+        assert_hit!(delta_handled);
+        assert_eq!(events.last_event_id.value(), "cursor-2");
+        assert_eq!(events.items_updated.len(), 1);
+        assert_eq!(events.items_updated[0].item_id.value(), "i1");
+        assert_eq!(events.items_deleted.len(), 1);
+        assert_eq!(events.items_deleted[0].item_id.value(), "i2");
+        assert!(!events.events_pending);
+        assert!(!events.full_refresh);
     }
 }
