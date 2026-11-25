@@ -17,17 +17,45 @@
  *
  */
 
+use crate::commands::{OutputFormat, settings_helper};
 use crate::helpers::CliPassClient as PassClient;
 use anyhow::{Context, Result};
 use pass::CreateVaultArgs;
 
-pub async fn run(client: PassClient, name: String) -> Result<()> {
-    let args = CreateVaultArgs::new(name).context("invalid args for create vault")?;
-    let (share_id, _) = client
+#[derive(serde::Serialize)]
+struct VaultCreatedOutput {
+    name: String,
+    vault_id: String,
+    share_id: String,
+}
+
+pub async fn run(client: PassClient, name: String, output: Option<OutputFormat>) -> Result<()> {
+    let output = match output {
+        Some(fmt) => fmt,
+        None => settings_helper::get_default_format(&client)
+            .await?
+            .unwrap_or(OutputFormat::Human),
+    };
+    let args = CreateVaultArgs::new(name.clone()).context("invalid args for create vault")?;
+    let (share_id, vault_id) = client
         .create_vault(args)
         .await
         .context("error creating vault")?;
 
-    println!("{share_id}");
+    match output {
+        OutputFormat::Human => {
+            println!("{share_id}");
+        }
+        OutputFormat::Json => {
+            let payload = VaultCreatedOutput {
+                name,
+                vault_id: vault_id.to_string(),
+                share_id: share_id.to_string(),
+            };
+            let json = serde_json::to_string_pretty(&payload)
+                .context("error serializing created vault output")?;
+            println!("{json}");
+        }
+    }
     Ok(())
 }

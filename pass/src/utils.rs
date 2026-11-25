@@ -46,6 +46,11 @@ pub fn is_id(value: &str) -> bool {
     value.len() == 88 && value.ends_with("==")
 }
 
+pub(crate) fn extract_proton_error(res: &muon::http::HttpRes) -> Option<ProtonApiError> {
+    res.body_json::<ProtonApiError>().ok()
+}
+
+#[allow(dead_code)]
 pub(crate) fn extract_proton_code(res: &muon::http::HttpRes) -> Option<ProtonApiErrorCode> {
-    res.body_json::<ProtonApiError>().ok().map(|c| c.code)
+    extract_proton_error(res).map(|e| e.code)
 }

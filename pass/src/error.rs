@@ -43,6 +43,8 @@ impl AnyhowErrorExt for anyhow::Error {
 pub struct ProtonApiError {
     #[serde(rename = "Code")]
     pub code: ProtonApiErrorCode,
+    #[serde(rename = "Error", default)]
+    pub error: Option<String>,
 }
 
 #[allow(dead_code)]

@@ -303,7 +303,7 @@ impl<C: PassClientContext> PassClient<C> {
         }
     }
 
-    async fn delete_item_guard(&self, share_id: ShareId, item_id: ItemId) -> Result<()> {
+    pub(crate) async fn delete_item_guard(&self, share_id: ShareId, item_id: ItemId) -> Result<()> {
         let share = self
             .get_share(&share_id)
             .await

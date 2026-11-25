@@ -33,6 +33,7 @@ pub mod delete;
 pub mod list;
 pub mod member;
 pub mod r#move;
+pub mod move_batch;
 pub mod share;
 pub mod sync;
 pub mod totp;
@@ -139,6 +140,11 @@ pub enum ItemCommands {
         to_share_id: Option<String>,
         #[arg(long, help = "Name of the destination vault")]
         to_vault_name: Option<String>,
+    },
+    #[command(about = "Move multiple items to a different vault in batches")]
+    MoveBatch {
+        #[command(flatten)]
+        args: move_batch::MoveBatchArgs,
     },
     #[command(about = "Attachment operations")]
     Attachment {
@@ -346,6 +352,7 @@ pub async fn run(subcommand: ItemCommands, client: PassClient) -> Result<()> {
             )?;
             r#move::run(client, query).await
         }
+        ItemCommands::MoveBatch { args } => move_batch::run(args, client).await,
         ItemCommands::Attachment { attachment_command } => {
             attachment::run(attachment_command, client).await
         }

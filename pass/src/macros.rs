@@ -56,14 +56,21 @@ macro_rules! assert_response {
     ($res:expr) => {{
         if !$res.status().is_success() {
             $crate::utils::debug_response(&$res);
-            return if let Some(c) = $crate::utils::extract_proton_code(&$res) {
-                if matches!(c, $crate::error::ProtonApiErrorCode::SessionLocked) {
+            return if let Some(api_err) = $crate::utils::extract_proton_error(&$res) {
+                if matches!(api_err.code, $crate::error::ProtonApiErrorCode::SessionLocked) {
                     eprintln!("Session is locked. Please unlock your session and try again.");
                 }
-                Err(anyhow::anyhow!(
-                    "Could not perform operation. Reason: {}",
-                    c.name()
-                ))
+                match api_err.error.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                    Some(msg) => Err(anyhow::anyhow!(
+                        "Could not perform operation. Reason: {} ({})",
+                        api_err.code.name(),
+                        msg
+                    )),
+                    None => Err(anyhow::anyhow!(
+                        "Could not perform operation. Reason: {}",
+                        api_err.code.name()
+                    )),
+                }
             } else {
                 Err(anyhow::anyhow!("Invalid status code: {}", $res.status()))
             };

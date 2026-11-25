@@ -27,6 +27,7 @@ pub(crate) mod item_keys;
 pub(crate) mod list;
 mod members;
 mod r#move;
+pub use r#move::MovedItemRef;
 mod move_to_folder;
 mod open;
 #[allow(dead_code)]

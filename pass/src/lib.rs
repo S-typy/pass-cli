@@ -65,6 +65,7 @@ pub use client::{PassClient, PassClientContext, PassSessionKeyType};
 pub use error::{AnyhowErrorExt, SessionInvalidatedError};
 pub use first_time_setup::FirstTimeSetupKey;
 pub use folder::create::CreateFolderPayload;
+pub use item::MovedItemRef;
 pub use item::create::credit_card;
 pub use item::create::custom;
 pub use item::create::identity;
